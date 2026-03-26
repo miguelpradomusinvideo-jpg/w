@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags } = require('discord.js');
 const speakeasy = require('speakeasy');
 require('dotenv').config();
 
@@ -51,7 +51,8 @@ client.on('interactionCreate', async (interaction) => {
                     .setStyle(ButtonStyle.Success)
             );
 
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        // Usando flags em vez de ephemeral
+        await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
     }
 });
 
@@ -93,14 +94,14 @@ client.on('interactionCreate', async (interaction) => {
             } catch (error) {
                 return interaction.reply({ 
                     content: '❌ Chave 2FA inválida! Use uma chave válida no formato Base32.\nExemplo: `JBSWY3DPEHPK3PXP`', 
-                    ephemeral: true 
+                    flags: MessageFlags.Ephemeral
                 });
             }
             
             if (!codigo || codigo.length !== 6) {
                 return interaction.reply({ 
                     content: '❌ Chave 2FA inválida! Verifique e tente novamente.', 
-                    ephemeral: true 
+                    flags: MessageFlags.Ephemeral
                 });
             }
             
@@ -117,14 +118,14 @@ client.on('interactionCreate', async (interaction) => {
                 )
                 .setFooter({ text: 'Gg Community © Criado por Miguel®' });
             
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
         
     } catch (error) {
         console.error('Erro:', error);
         await interaction.reply({ 
             content: '❌ Ocorreu um erro. Tente novamente.', 
-            ephemeral: true 
+            flags: MessageFlags.Ephemeral
         });
     }
 });
