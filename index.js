@@ -60,7 +60,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton() && !interaction.isModalSubmit()) return;
 
     try {
-        // Botão para gerar 2FA
         if (interaction.isButton() && interaction.customId === 'gerar_2fa') {
             const modal = new ModalBuilder()
                 .setCustomId(`modal_2fa_${interaction.user.id}`)
@@ -77,11 +76,9 @@ client.on('interactionCreate', async (interaction) => {
 
             const row = new ActionRowBuilder().addComponents(input);
             modal.addComponents(row);
-
             await interaction.showModal(modal);
         }
 
-        // Modal com a chave
         if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_2fa_')) {
             const chave = interaction.fields.getTextInputValue('chave').toUpperCase().trim();
             
@@ -110,7 +107,6 @@ client.on('interactionCreate', async (interaction) => {
             const now = Math.floor(Date.now() / 1000);
             const tempoRestante = 30 - (now % 30);
             
-            // CÓDIGO 2FA - SÓ VOCÊ VÊ (EPHEMERAL)
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
                 .setTitle('🎮 ROCKSTAR 2FA - Código Gerado')
@@ -121,7 +117,6 @@ client.on('interactionCreate', async (interaction) => {
                 )
                 .setFooter({ text: 'Gg Community © Criado por Miguel®' });
             
-            // RESPOSTA SOMENTE PARA VOCÊ (EPHEMERAL)
             await interaction.reply({ embeds: [embed], ephemeral: true });
         }
         
