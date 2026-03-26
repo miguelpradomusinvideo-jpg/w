@@ -16,11 +16,27 @@ client.once('ready', () => {
     client.user.setActivity('🎮 Gerador 2FA', { type: 'PLAYING' });
 });
 
-// Comando para mostrar o botão
-client.on('messageCreate', async (message) => {
-    if (message.author.bot) return;
+// Registrar slash commands
+client.on('ready', async () => {
+    try {
+        await client.application.commands.set([
+            {
+                name: 'start',
+                description: 'Abrir o gerador 2FA',
+                options: []
+            }
+        ]);
+        console.log('✅ Comando /start registrado!');
+    } catch (error) {
+        console.error('Erro ao registrar comando:', error);
+    }
+});
+
+// Slash Command: /start
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isCommand()) return;
     
-    if (message.content === '!start' || message.content === '!2fa') {
+    if (interaction.commandName === 'start') {
         const embed = new EmbedBuilder()
             .setColor(0x00FF00)
             .setTitle('🎮 ROCKSTAR 2FA APP')
@@ -35,11 +51,11 @@ client.on('messageCreate', async (message) => {
                     .setStyle(ButtonStyle.Success)
             );
 
-        await message.channel.send({ embeds: [embed], components: [row] });
+        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     }
 });
 
-// Interações
+// Interações com botões e modais
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton() && !interaction.isModalSubmit()) return;
 
@@ -69,7 +85,6 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.isModalSubmit() && interaction.customId.startsWith('modal_2fa_')) {
             const chave = interaction.fields.getTextInputValue('chave').toUpperCase().trim();
             
-            // Validar e gerar código
             let codigo;
             try {
                 codigo = speakeasy.totp({
@@ -92,14 +107,13 @@ client.on('interactionCreate', async (interaction) => {
                 });
             }
             
-            // Calcular tempo restante
             const now = Math.floor(Date.now() / 1000);
             const tempoRestante = 30 - (now % 30);
             
-            // Enviar resposta
+            // CÓDIGO 2FA - SÓ VOCÊ VÊ (EPHEMERAL)
             const embed = new EmbedBuilder()
                 .setColor(0x00FF00)
-                .setTitle('🎮 CÓDIGO 2FA GERADO')
+                .setTitle('🎮 ROCKSTAR 2FA - Código Gerado')
                 .setDescription(`\`\`\`\n${codigo}\n\`\`\``)
                 .addFields(
                     { name: '⏱️ Expira em', value: `${tempoRestante} segundos`, inline: true },
@@ -107,7 +121,8 @@ client.on('interactionCreate', async (interaction) => {
                 )
                 .setFooter({ text: 'Gg Community © Criado por Miguel®' });
             
-            await interaction.reply({ embeds: [embed], ephemeral: false });
+            // RESPOSTA SOMENTE PARA VOCÊ (EPHEMERAL)
+            await interaction.reply({ embeds: [embed], ephemeral: true });
         }
         
     } catch (error) {
