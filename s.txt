@@ -1,0 +1,618 @@
+const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ComponentType } = require('discord.js');
+const speakeasy = require('speakeasy');
+const database = require('.database');
+require('dotenv').config();
+
+const client = new Client({
+    intents [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.DirectMessages
+    ]
+});
+
+const PREFIX = '!';
+const ACTIVE_CODES = new Map();  Armazenar códigos ativos com tempo
+
+client.once('ready', () = {
+    console.log(`🎮 Rockstar 2FA Generator - Gg Community`);
+    console.log(`📝 Bot online como ${client.user.tag}`);
+    console.log(`👑 Criado por Miguel®`);
+    client.user.setActivity('🎮 Gerando 2FA para Rockstar', { type 'PLAYING' });
+});
+
+ Comandos de texto
+client.on('messageCreate', async (message) = {
+    if (message.author.bot) return;
+    if (!message.content.startsWith(PREFIX)) return;
+
+    const args = message.content.slice(PREFIX.length).trim().split( +);
+    const command = args.shift().toLowerCase();
+
+    switch (command) {
+        case 'add'
+            await addAccountFormat(message, args);
+            break;
+        case 'gerar'
+            await generateCode(message, args);
+            break;
+        case 'listar'
+            await listAccounts(message);
+            break;
+        case 'remover'
+            await removeAccount(message, args);
+            break;
+        case 'historico'
+            await showHistory(message, args);
+            break;
+        case 'ajuda'
+            await sendHelp(message);
+            break;
+        case 'creditos'
+            await sendCredits(message);
+            break;
+        default
+            break;
+    }
+});
+
+ Slash commands
+client.on('interactionCreate', async (interaction) = {
+    if (!interaction.isCommand() && !interaction.isButton() && !interaction.isModalSubmit() && !interaction.isStringSelectMenu()) return;
+
+    try {
+        if (interaction.isCommand()) {
+            const { commandName } = interaction;
+            
+            switch (commandName) {
+                case 'add'
+                    await showAddModal(interaction);
+                    break;
+                case 'gerar'
+                    await showAccountsSelect(interaction);
+                    break;
+                case 'listar'
+                    await listAccountsSlash(interaction);
+                    break;
+                case 'creditos'
+                    await sendCreditsSlash(interaction);
+                    break;
+            }
+        } else if (interaction.isButton()) {
+            await handleButtonInteraction(interaction);
+        } else if (interaction.isModalSubmit()) {
+            await handleModalSubmit(interaction);
+        } else if (interaction.isStringSelectMenu()) {
+            await handleSelectMenu(interaction);
+        }
+    } catch (error) {
+        console.error(error);
+        const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('❌ Erro')
+            .setDescription('Ocorreu um erro ao processar sua solicitação.')
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        await interaction.reply({ embeds [embed], ephemeral true });
+    }
+});
+
+ FUNÇÃO PRINCIPAL Adicionar conta no formato EMAIL  SENHA  2FA
+async function addAccountFormat(message, args) {
+    const input = args.join(' ');
+    
+     Verificar se está no formato EMAIL  SENHA  2FA
+    const regex = ^([^]+)ss([^]+)ss([A-Z2-7]+)$i;
+    const match = input.match(regex);
+    
+    if (!match) {
+        const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('❌ Formato Inválido!')
+            .setDescription('Use o formato EMAIL  SENHA  2FAnnExemplon`!add miguel@gmail.com  minhaSenha123  JBSWY3DPEHPK3PXP`')
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        return message.reply({ embeds [embed] });
+    }
+    
+    const email = match[1].trim();
+    const senha = match[2].trim();
+    const secret2FA = match[3].trim().toUpperCase();
+    
+     Validar chave 2FA
+    const testCode = speakeasy.totp({
+        secret secret2FA,
+        encoding 'base32',
+        step 30,
+        digits 6
+    });
+    
+    if (!testCode  testCode.length !== 6) {
+        const embed = new EmbedBuilder()
+            .setColor(0xFF0000)
+            .setTitle('❌ Chave 2FA Inválida!')
+            .setDescription('A chave 2FA deve estar no formato Base32.nExemplo `JBSWY3DPEHPK3PXP`')
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        return message.reply({ embeds [embed] });
+    }
+    
+    try {
+        database.saveAccount(message.author.id, email, senha, secret2FA);
+        
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('✅ Conta Rockstar Adicionada!')
+            .setDescription(`Conta ${email} foi salva com sucesso!`)
+            .addFields(
+                { name '📧 Email', value email, inline true },
+                { name '🔐 Senha', value '••••••••', inline true },
+                { name '🔑 2FA', value '✅ Configurado', inline true },
+                { name '🎮 Como usar', value 'Use `!gerar ' + email.split('@')[0] + '` ou `!gerar ' + email + '` para gerar o código 2FA', inline false }
+            )
+            .setFooter({ text 'Gg Community © Criado por Miguel®' })
+            .setTimestamp();
+        
+        await message.reply({ embeds [embed] });
+    } catch (error) {
+        await message.reply('❌ Erro ao salvar conta. Tente novamente.');
+    }
+}
+
+ FUNÇÃO PRINCIPAL Gerar código 2FA
+async function generateCode(message, args) {
+    const searchTerm = args.join(' ');
+    
+    if (!searchTerm) {
+        const accounts = database.getUserAccounts(message.author.id);
+        if (accounts.length === 0) {
+            const embed = new EmbedBuilder()
+                .setColor(0xFFA500)
+                .setTitle('📭 Nenhuma conta cadastrada')
+                .setDescription('Use o comando para adicionar uma conta no formaton`!add EMAIL  SENHA  2FA`nnExemplon`!add miguel@gmail.com  123456  JBSWY3DPEHPK3PXP`')
+                .setFooter({ text 'Gg Community © Criado por Miguel®' });
+            
+            return message.reply({ embeds [embed] });
+        }
+        
+         Mostrar lista de contas
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('🎮 Suas Contas Rockstar')
+            .setDescription('Use `!gerar email` para gerar o código 2FA')
+            .addFields(
+                accounts.map(acc = ({ 
+                    name `📧 ${acc.email}`, 
+                    value `🎮 Conta ${acc.account_name  'Sem nome'}n📅 Adicionada ${new Date(acc.created_at).toLocaleDateString()}`,
+                    inline false 
+                }))
+            )
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        return message.reply({ embeds [embed] });
+    }
+    
+     Buscar conta por email ou parte do email
+    let account = database.getAccountByEmail(message.author.id, searchTerm);
+    
+    if (!account) {
+         Buscar por parte do email
+        const accounts = database.searchAccounts(message.author.id, searchTerm);
+        if (accounts.length === 0) {
+            return message.reply(`❌ Conta com email ${searchTerm} não encontrada. Use `!listar` para ver suas contas.`);
+        }
+        if (accounts.length  1) {
+            const embed = new EmbedBuilder()
+                .setColor(0xFFA500)
+                .setTitle('🔍 Múltiplas contas encontradas')
+                .setDescription('Use o email completo para gerar o código')
+                .addFields(accounts.map(acc = ({ name acc.email, value 'Clique para copiar', inline false })))
+                .setFooter({ text 'Gg Community © Criado por Miguel®' });
+            
+            return message.reply({ embeds [embed] });
+        }
+        account = accounts[0];
+         Buscar dados completos
+        account = database.getAccountById(account.id, message.author.id);
+    }
+    
+     Gerar código TOTP
+    const code = speakeasy.totp({
+        secret account.secret_2fa,
+        encoding 'base32',
+        step 30,
+        digits 6
+    });
+    
+     Calcular tempo restante
+    const now = Math.floor(Date.now()  1000);
+    const timeStep = 30;
+    const timeLeft = timeStep - (now % timeStep);
+    
+     Salvar no histórico
+    database.logGeneratedCode(account.id, account.email, code);
+    
+     Armazenar código ativo
+    ACTIVE_CODES.set(`${message.author.id}_${account.email}`, {
+        code,
+        expiresAt now + timeLeft,
+        accountId account.id
+    });
+    
+     Criar embed com informações completas
+    const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('🎮 ROCKSTAR 2FA - Código Gerado')
+        .setDescription(`Conta ${account.email}`)
+        .addFields(
+            { name '🔐 CÓDIGO 2FA', value ````n${code}n````, inline false },
+            { name '📧 Email', value account.email, inline true },
+            { name '🔑 Senha', value '' + account.senha + '', inline true },
+            { name '⏱️ Expira em', value `${timeLeft} segundos`, inline true },
+            { name '🎮 Plataforma', value 'Rockstar Games (GTA V, RDR2)', inline false }
+        )
+        .setFooter({ text 'Use este código para fazer login na Rockstar Launcher  Gg Community © Criado por Miguel®' })
+        .setTimestamp();
+    
+    const row = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId(`copy_code_${code}_${account.email}`)
+                .setLabel('📋 Copiar Código')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`refresh_code_${account.id}_${account.email}`)
+                .setLabel('🔄 Gerar Novamente')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId(`copy_creds_${account.id}_${account.email}`)
+                .setLabel('📧 Copiar EmailSenha')
+                .setStyle(ButtonStyle.Secondary)
+        );
+    
+    const msg = await message.reply({ embeds [embed], components [row] });
+    
+     Timer para atualizar automaticamente
+    setTimeout(async () = {
+        const newCode = speakeasy.totp({
+            secret account.secret_2fa,
+            encoding 'base32',
+            step 30,
+            digits 6
+        });
+        
+        const newTimeLeft = 30 - (Math.floor(Date.now()  1000) % 30);
+        
+        const updatedEmbed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('🎮 ROCKSTAR 2FA - Código Gerado')
+            .setDescription(`Conta ${account.email}`)
+            .addFields(
+                { name '🔐 CÓDIGO 2FA', value ````n${newCode}n````, inline false },
+                { name '📧 Email', value account.email, inline true },
+                { name '🔑 Senha', value '' + account.senha + '', inline true },
+                { name '⏱️ Expira em', value `${newTimeLeft} segundos`, inline true },
+                { name '🎮 Plataforma', value 'Rockstar Games (GTA V, RDR2)', inline false }
+            )
+            .setFooter({ text 'Use este código para fazer login na Rockstar Launcher  Gg Community © Criado por Miguel®' })
+            .setTimestamp();
+        
+        await msg.edit({ embeds [updatedEmbed], components [row] });
+        database.logGeneratedCode(account.id, account.email, newCode);
+    }, timeLeft  1000);
+}
+
+ Listar contas
+async function listAccounts(message) {
+    const accounts = database.getUserAccounts(message.author.id);
+    
+    if (accounts.length === 0) {
+        const embed = new EmbedBuilder()
+            .setColor(0xFFA500)
+            .setTitle('📭 Nenhuma conta cadastrada')
+            .setDescription('Use `!add EMAIL  SENHA  2FA` para adicionar uma conta Rockstar')
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        return message.reply({ embeds [embed] });
+    }
+    
+    const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('🎮 Suas Contas Rockstar')
+        .setDescription(`Total ${accounts.length} conta(s)`)
+        .setFooter({ text 'Use !gerar email para gerar código 2FA' });
+    
+    accounts.forEach(acc = {
+        embed.addFields({
+            name `📧 ${acc.email}`,
+            value `🔑 Senha ${acc.senha}n🎮 Nome ${acc.account_name}n📅 Adicionada ${new Date(acc.created_at).toLocaleDateString()}n🕐 Último uso ${acc.last_used  new Date(acc.last_used).toLocaleDateString()  'Nunca'}`,
+            inline false
+        });
+    });
+    
+    await message.reply({ embeds [embed] });
+}
+
+ Remover conta
+async function removeAccount(message, args) {
+    const email = args.join(' ');
+    
+    if (!email) {
+        return message.reply('❌ Use `!remover email`nExemplo `!remover miguel@gmail.com`');
+    }
+    
+    const removed = database.removeAccountByEmail(message.author.id, email);
+    
+    if (removed) {
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('✅ Conta Removida')
+            .setDescription(`Conta ${email} foi removida com sucesso!`)
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        await message.reply({ embeds [embed] });
+    } else {
+        await message.reply(`❌ Conta com email ${email} não encontrada.`);
+    }
+}
+
+ Histórico de códigos
+async function showHistory(message, args) {
+    const email = args.join(' ');
+    
+    if (!email) {
+        return message.reply('❌ Use `!historico email`');
+    }
+    
+    const history = database.getCodeHistory(email, 10);
+    
+    if (history.length === 0) {
+        return message.reply(`📭 Nenhum código gerado para a conta ${email} ainda.`);
+    }
+    
+    const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle(`📜 Histórico de Códigos - ${email}`)
+        .setDescription(`Últimos ${history.length} códigos gerados`)
+        .setFooter({ text 'Gg Community © Criado por Miguel®' });
+    
+    history.forEach((item, index) = {
+        embed.addFields({
+            name `${index + 1}. Código ${item.code}`,
+            value `📅 ${new Date(item.generated_at).toLocaleString()}  ${item.used  '✅ Usado'  '⏳ Não usado'}`,
+            inline false
+        });
+    });
+    
+    await message.reply({ embeds [embed] });
+}
+
+ Menu de ajuda
+async function sendHelp(message) {
+    const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('🎮 Rockstar 2FA Generator - Gg Community')
+        .setDescription('Como usar o gerador 2FAnn1. Adicione sua conta no formato `EMAIL  SENHA  2FA`n2. Use `!gerar` para listar suas contasn3. Use `!gerar email` para gerar o código 2FAn4. Receba seu código de autenticação temporário')
+        .addFields(
+            { name '📱 Comandos de Texto', value `
+                `!add EMAIL  SENHA  2FA` - Adicionar conta Rockstar
+                `!gerar` - Listar todas as contas
+                `!gerar email` - Gerar código 2FA para a conta
+                `!listar` - Listar todas as contas
+                `!remover email` - Remover uma conta
+                `!historico email` - Ver histórico de códigos
+                `!creditos` - Ver créditos do bot
+                `!ajuda` - Mostrar esta mensagem
+            `, inline false },
+            { name '⚡ Comandos de Barra', value `
+                `add` - Adicionar conta interativamente
+                `gerar` - Gerar código 2FA
+                `listar` - Listar contas
+                `creditos` - Ver créditos
+            `, inline false },
+            { name '📝 Exemplo de uso', value '`!add miguel@gmail.com  123456  JBSWY3DPEHPK3PXP`', inline false },
+            { name '🔐 Como obter a chave 2FA', value '1. Ative o 2FA na sua conta Rockstarn2. Copie a chave secreta (formato Base32)n3. Use o comando com o formato EMAIL  SENHA  2FA', inline false }
+        )
+        .setFooter({ text 'Gg Community © Criado por Miguel®' })
+        .setTimestamp();
+    
+    await message.reply({ embeds [embed] });
+}
+
+ Créditos
+async function sendCredits(message) {
+    const embed = new EmbedBuilder()
+        .setColor(0xFFD700)
+        .setTitle('👑 Créditos - Rockstar 2FA Generator')
+        .setDescription('Sistema de geração de códigos 2FA para contas Rockstar Games')
+        .addFields(
+            { name '🎮 Desenvolvedor', value 'Miguel®', inline true },
+            { name '📅 Versão', value '2.0.0', inline true },
+            { name '📅 Data', value '25 de março de 2026', inline true },
+            { name '🔒 Segurança', value 'TOTP - HMAC-SHA1 (30s)', inline true },
+            { name '🎮 Plataforma', value 'Rockstar Games (GTA V, RDR2)', inline false },
+            { name '💻 Tecnologias', value 'Node.js • Discord.js • SQLite • speakeasy', inline false },
+            { name '©️ Criado por', value 'Miguel®', inline true }
+        )
+        .setFooter({ text 'Gg Community © Criado por Miguel®' })
+        .setTimestamp();
+    
+    await message.reply({ embeds [embed] });
+}
+
+ Slash Commands
+async function showAddModal(interaction) {
+    const modal = new ModalBuilder()
+        .setCustomId(`add_account_modal_${interaction.user.id}`)
+        .setTitle('Adicionar Conta Rockstar');
+
+    const emailInput = new TextInputBuilder()
+        .setCustomId('account_email')
+        .setLabel('Email')
+        .setPlaceholder('exemplo@email.com')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+    const senhaInput = new TextInputBuilder()
+        .setCustomId('account_senha')
+        .setLabel('Senha')
+        .setPlaceholder('Sua senha da Rockstar')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+    const secretInput = new TextInputBuilder()
+        .setCustomId('account_secret')
+        .setLabel('Chave 2FA (Base32)')
+        .setPlaceholder('JBSWY3DPEHPK3PXP')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+    const row1 = new ActionRowBuilder().addComponents(emailInput);
+    const row2 = new ActionRowBuilder().addComponents(senhaInput);
+    const row3 = new ActionRowBuilder().addComponents(secretInput);
+    
+    modal.addComponents(row1, row2, row3);
+    
+    await interaction.showModal(modal);
+}
+
+async function showAccountsSelect(interaction) {
+    const accounts = database.getUserAccounts(interaction.user.id);
+    
+    if (accounts.length === 0) {
+        return interaction.reply({ 
+            content '❌ Você não tem contas cadastradas. Use `add` para adicionar.', 
+            ephemeral true 
+        });
+    }
+    
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('generate_code_menu')
+        .setPlaceholder('Selecione uma conta Rockstar')
+        .addOptions(
+            accounts.slice(0, 25).map(acc = new StringSelectMenuOptionBuilder()
+                .setLabel(acc.email.length  50  acc.email.substring(0, 47) + '...'  acc.email)
+                .setDescription(`Senha ${acc.senha.substring(0, 20)}...`)
+                .setValue(acc.id.toString())
+                .setEmoji('🎮')
+            )
+        );
+    
+    const row = new ActionRowBuilder().addComponents(selectMenu);
+    
+    await interaction.reply({
+        content '🎮 Selecione a conta Rockstar para gerar o código 2FA',
+        components [row],
+        ephemeral true
+    });
+}
+
+async function listAccountsSlash(interaction) {
+    const accounts = database.getUserAccounts(interaction.user.id);
+    
+    if (accounts.length === 0) {
+        const embed = new EmbedBuilder()
+            .setColor(0xFFA500)
+            .setTitle('📭 Nenhuma conta cadastrada')
+            .setDescription('Use `add` para adicionar uma conta Rockstar')
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        return interaction.reply({ embeds [embed], ephemeral true });
+    }
+    
+    const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('🎮 Suas Contas Rockstar')
+        .setDescription(`Total ${accounts.length} conta(s)`)
+        .setFooter({ text 'Use gerar para gerar código 2FA' });
+    
+    accounts.forEach(acc = {
+        embed.addFields({
+            name `📧 ${acc.email}`,
+            value `🔑 Senha ${acc.senha}n📅 Adicionada ${new Date(acc.created_at).toLocaleDateString()}`,
+            inline false
+        });
+    });
+    
+    await interaction.reply({ embeds [embed], ephemeral true });
+}
+
+async function sendCreditsSlash(interaction) {
+    const embed = new EmbedBuilder()
+        .setColor(0xFFD700)
+        .setTitle('👑 Créditos - Rockstar 2FA Generator')
+        .setDescription('Sistema de geração de códigos 2FA para contas Rockstar Games')
+        .addFields(
+            { name '🎮 Desenvolvedor', value 'Miguel®', inline true },
+            { name '📅 Versão', value '2.0.0', inline true },
+            { name '📅 Data', value '25 de março de 2026', inline true },
+            { name '©️ Criado por', value 'Miguel®', inline true }
+        )
+        .setFooter({ text 'Gg Community © Criado por Miguel®' });
+    
+    await interaction.reply({ embeds [embed], ephemeral true });
+}
+
+ Handlers
+async function handleButtonInteraction(interaction) {
+    const customId = interaction.customId;
+    
+    if (customId.startsWith('copy_code_')) {
+        const parts = customId.split('_');
+        const code = parts[2];
+        const email = parts.slice(3).join('_');
+        
+        await interaction.reply({ 
+            content `📋 Código `${code}` copiado para sua área de transferência!`,
+            ephemeral true 
+        });
+        
+    } else if (customId.startsWith('refresh_code_')) {
+        const parts = customId.split('_');
+        const accountId = parseInt(parts[2]);
+        const email = parts.slice(3).join('_');
+        
+        const account = database.getAccountById(accountId, interaction.user.id);
+        
+        if (!account) {
+            return interaction.reply({ content '❌ Conta não encontrada.', ephemeral true });
+        }
+        
+        const code = speakeasy.totp({
+            secret account.secret_2fa,
+            encoding 'base32',
+            step 30,
+            digits 6
+        });
+        
+        const now = Math.floor(Date.now()  1000);
+        const timeLeft = 30 - (now % 30);
+        
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('🎮 ROCKSTAR 2FA - Código Gerado')
+            .setDescription(`Conta ${account.email}`)
+            .addFields(
+                { name '🔐 CÓDIGO 2FA', value ````n${code}n````, inline false },
+                { name '📧 Email', value account.email, inline true },
+                { name '🔑 Senha', value '' + account.senha + '', inline true },
+                { name '⏱️ Expira em', value `${timeLeft} segundos`, inline true }
+            )
+            .setFooter({ text 'Gg Community © Criado por Miguel®' });
+        
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`copy_code_${code}_${account.email}`)
+                    .setLabel('📋 Copiar Código')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId(`refresh_code_${account.id}_${account.email}`)
+                    .setLabel('🔄 Gerar Novamente')
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId(`copy_creds_${account.id}_${account.email}`)
+                    .setLabel('📧 Copiar EmailSenha')
+                    .set
