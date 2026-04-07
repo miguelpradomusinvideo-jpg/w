@@ -16,7 +16,7 @@ client.once('ready', () => {
     client.user.setActivity('🎮 Gerador 2FA', { type: 'PLAYING' });
 });
 
-// Registrar slash commands
+// Registrar slash command /start
 client.on('ready', async () => {
     try {
         await client.application.commands.set([
@@ -32,7 +32,31 @@ client.on('ready', async () => {
     }
 });
 
-// Slash Command: /start
+// COMANDO DE TEXTO: !start (funciona também)
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+    
+    if (message.content === '!start') {
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle('🎮 ROCKSTAR 2FA APP')
+            .setDescription('**Como usar o gerador 2FA**\n\n1. Clique no botão "Gerar Código 2FA" abaixo\n2. Insira sua chave\n3. Receba seu código de autenticação temporário')
+            .setFooter({ text: 'Gg Community © Criado por Miguel®' });
+
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('gerar_2fa')
+                    .setLabel('🔐 Gerar Código 2FA')
+                    .setStyle(ButtonStyle.Success)
+            );
+
+        // Envia no canal (todo mundo vê)
+        await message.channel.send({ embeds: [embed], components: [row] });
+    }
+});
+
+// SLASH COMMAND: /start (só você vê)
 client.on('interactionCreate', async (interaction) => {
     if (!interaction.isCommand()) return;
     
@@ -51,7 +75,6 @@ client.on('interactionCreate', async (interaction) => {
                     .setStyle(ButtonStyle.Success)
             );
 
-        // Usando flags em vez de ephemeral
         await interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
     }
 });
